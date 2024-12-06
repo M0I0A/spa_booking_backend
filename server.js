@@ -5,7 +5,7 @@ const path = require("path");
 
 const app = express();
 const PORT = 3000;
-const DATA_FILE = "appointments.txt";
+const DATA_FILE = "/tmp/appointments.txt";
 
 const cors = require('cors');
 app.use(cors());
