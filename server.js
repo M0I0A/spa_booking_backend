@@ -81,6 +81,7 @@ app.post("/submit-booking", (req, res) => {
     console.log("Received booking data:", req.body);
 
 });
+  
 
 app.post("/modify-appointment", (req, res) => {
     const { phone, name, service, time, date, notes } = req.body;
