@@ -8,7 +8,7 @@ const PORT = 3000;
 const DATA_FILE = "/tmp/appointments.txt";
 
 const cors = require('cors');
-app.use(cors({ origin: "https://your-frontend-url.vercel.app" })); // Replace with your actual frontend deployed URL.
+app.use(cors({ origin: "https://spa-booking-rouge.vercel.app/" })); // Replace with your actual frontend deployed URL.
 
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
