@@ -85,11 +85,11 @@ app.post("/submit-booking", (req, res) => {
 
 app.post("/modify-appointment", (req, res) => {
     const { phone, name, service, time, date, notes } = req.body;
-
+console.log("Say 1")
     if (!phone || !name || !service || !time || !date || !notes) {
         return res.status(400).json({ error: "All fields are required!" });
     }
-
+console.log("Say 2")
     let appointments = loadAppointmentsFromFile();
     const index = appointments.findIndex((a) => a.phone === phone);
 
@@ -97,6 +97,8 @@ app.post("/modify-appointment", (req, res) => {
         appointments[index] = { phone, name, service, time, date, notes };
         saveAppointmentsToFile(appointments);
         res.json({ message: "Appointment updated successfully!" });
+
+console.log("Say 3")
     } else {
         res.status(404).json({ error: "Appointment not found!" });
     }
