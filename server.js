@@ -1,114 +1,132 @@
 const express = require("express");
-const fs = require("fs");
+const mongoose = require("mongoose");
 const bodyParser = require("body-parser");
-const path = require("path");
+const cors = require("cors");
+require("dotenv").config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const DATA_FILE = "/tmp/appointments.txt";
 
-const cors = require("cors");
-app.use(cors({ origin: "*" }));
+// MongoDB Connection
+mongoose
+  .connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
+  .then(() => console.log("Connected to MongoDB"))
+  .catch((err) => console.error("MongoDB connection error:", err));
 
+// Appointment Schema and Model
+const appointmentSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  phone: { type: String, unique: true, required: true },
+  service: { type: String, required: true },
+  time: { type: String, required: true },
+  date: { type: String, required: true },
+  notes: String,
+});
+
+const Appointment = mongoose.model("Appointment", appointmentSchema);
+
+// Middleware
+app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
-app.use((req, res, next) => {
-    console.log(`${req.method} ${req.url}`);
-    next();
+// Routes
+
+// Health Check
+app.get("/", (req, res) => {
+  res.status(200).send("API is working!");
 });
 
-const loadAppointmentsFromFile = () => {
-    try {
-        if (fs.existsSync(DATA_FILE)) {
-            const data = fs.readFileSync(DATA_FILE, "utf-8");
-            return JSON.parse(data || "[]");
-        }
-    } catch (error) {
-        console.error("Error reading appointments file:", error);
-    }
-    return [];
-};
-
-const saveAppointmentsToFile = (appointments) => {
-    try {
-        fs.writeFileSync(DATA_FILE, JSON.stringify(appointments, null, 2), "utf-8");
-    } catch (error) {
-        console.error("Error writing to appointments file:", error);
-    }
-};
-
-app.get("/check-phone/:phone", (req, res) => {
-    const phone = req.params.phone;
-    const appointments = loadAppointmentsFromFile();
-    const appointment = appointments.find((a) => a.phone === phone);
+// Check if a phone number exists
+app.get("/check-phone/:phone", async (req, res, next) => {
+  try {
+    const appointment = await Appointment.findOne({ phone: req.params.phone });
     if (appointment) {
-        res.json({ exists: true, appointment });
+      res.json({ exists: true, appointment });
     } else {
-        res.json({ exists: false });
+      res.json({ exists: false });
     }
+  } catch (error) {
+    next(error); // Pass the error to centralized error handler
+  }
 });
 
-app.post("/submit-booking", (req, res) => {
-    const { name, phone, service, time, date, notes } = req.body;
+// Submit or update a booking
+app.post("/submit-booking", async (req, res, next) => {
+  const { name, phone, service, time, date, notes } = req.body;
 
-    if (!name || !phone || !service || !time || !date) {
-        return res.status(400).json({ error: "All fields are required!" });
-    }
+  if (!name || !phone || !service || !time || !date) {
+    return res.status(400).json({ error: "All fields are required!" });
+  }
 
-    const appointments = loadAppointmentsFromFile();
-    const index = appointments.findIndex((a) => a.phone === phone);
-
-    if (index !== -1) {
-        appointments[index] = { name, phone, service, time, date, notes };
-        saveAppointmentsToFile(appointments);
-        return res.json({ message: "Appointment updated successfully!" });
-    }
-
-    appointments.push({ name, phone, service, time, date, notes });
-    saveAppointmentsToFile(appointments);
-    res.json({ message: "Appointment booked successfully!" });
+  try {
+    const appointment = await Appointment.findOneAndUpdate(
+      { phone },
+      { name, phone, service, time, date, notes },
+      { upsert: true, new: true }
+    );
+    res.json({ message: "Appointment saved successfully!", appointment });
+  } catch (error) {
+    next(error);
+  }
 });
 
-app.post("/modify-appointment", (req, res) => {
-    const { phone, name, service, time, date, notes } = req.body;
+// Modify an existing appointment
+app.post("/modify-appointment", async (req, res, next) => {
+  const { phone, name, service, time, date, notes } = req.body;
 
-    if (!phone || !name || !service || !time || !date || !notes) {
-        return res.status(400).json({ error: "All fields are required!" });
+  try {
+    const appointment = await Appointment.findOneAndUpdate(
+      { phone },
+      { name, service, time, date, notes },
+      { new: true }
+    );
+    if (!appointment) {
+      return res.status(404).json({ error: "Appointment not found!" });
     }
-
-    const appointments = loadAppointmentsFromFile();
-    const index = appointments.findIndex((a) => a.phone === phone);
-
-    if (index !== -1) {
-        appointments[index] = { phone, name, service, time, date, notes };
-        saveAppointmentsToFile(appointments);
-        return res.json({ message: "Appointment updated successfully!" });
-    }
-
-    res.status(404).json({ error: "Appointment not found!" });
+    res.json({ message: "Appointment updated successfully!", appointment });
+  } catch (error) {
+    next(error);
+  }
 });
 
-app.post("/cancel-appointment", (req, res) => {
-    const { phone } = req.body;
-    const appointments = loadAppointmentsFromFile();
-    const updatedAppointments = appointments.filter((a) => a.phone !== phone);
+// Cancel an appointment
+app.post("/cancel-appointment", async (req, res, next) => {
+  const { phone } = req.body;
 
-    if (updatedAppointments.length !== appointments.length) {
-        saveAppointmentsToFile(updatedAppointments);
-        return res.json({ message: "Appointment canceled successfully!" });
+  try {
+    const result = await Appointment.findOneAndDelete({ phone });
+    if (!result) {
+      return res.status(404).json({ error: "Appointment not found!" });
     }
-
-    res.status(404).json({ error: "Appointment not found!" });
+    res.json({ message: "Appointment canceled successfully!" });
+  } catch (error) {
+    next(error);
+  }
 });
 
-const buildPath = path.join(__dirname, "build");
-app.use(express.static(buildPath));
+app.get("/appointment/:phone", async (req, res, next) => {
+  const phone = req.params.phone;
 
-app.get("*", (req, res) => {
-    res.sendFile(path.join(buildPath, "index.html"));
+  try {
+    const appointment = await Appointment.findOne({ phone });
+    if (appointment) {
+      res.status(200).json(appointment); // Return the appointment details
+    } else {
+      res.status(404).json({ error: "Appointment not found!" }); // Handle not found
+    }
+  } catch (error) {
+    next(error); // Pass the error to centralized error handler
+  }
 });
 
+// Centralized Error Handler
+app.use((err, req, res, next) => {
+  console.error("Error occurred:", err.message);
+  res.status(500).json({ error: "Internal Server Error" });
+});
+
+// Start the server
 app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+  console.log(`Server running on http://localhost:${PORT}`);
 });
